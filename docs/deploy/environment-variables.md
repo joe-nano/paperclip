@@ -10,11 +10,51 @@ All environment variables that Paperclip uses for server configuration.
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PORT` | `3100` | Server port |
-| `HOST` | `127.0.0.1` | Server host binding |
+| `PAPERCLIP_BIND` | `loopback` | Reachability preset: `loopback`, `lan`, `tailnet`, or `custom` |
+| `PAPERCLIP_BIND_HOST` | (unset) | Required when `PAPERCLIP_BIND=custom` |
+| `HOST` | `127.0.0.1` | Legacy host override; prefer `PAPERCLIP_BIND` for new setups |
 | `DATABASE_URL` | (embedded) | PostgreSQL connection string |
 | `PAPERCLIP_HOME` | `~/.paperclip` | Base directory for all Paperclip data |
 | `PAPERCLIP_INSTANCE_ID` | `default` | Instance identifier (for multiple local instances) |
 | `PAPERCLIP_DEPLOYMENT_MODE` | `local_trusted` | Runtime mode override |
+| `PAPERCLIP_DEPLOYMENT_EXPOSURE` | `private` | Exposure policy when deployment mode is `authenticated` |
+| `PAPERCLIP_API_URL` | (auto-derived) | Paperclip API base URL. When set externally (e.g., via Kubernetes ConfigMap, load balancer, or reverse proxy), the server preserves the value instead of deriving it from the listen host and port. Useful for deployments where the public-facing URL differs from the local bind address. |
+| `PAPERCLIP_HIDDEN_SETTINGS` | (unset) | Comma-separated settings surfaces to hide from the UI and floor at the API, for operators hosting Paperclip for others (managed cloud, internal shared server). See [Hiding settings surfaces](#hiding-settings-surfaces). |
+
+### Hiding settings surfaces
+
+`PAPERCLIP_HIDDEN_SETTINGS` takes keys from the registry in
+`packages/shared/src/settings-visibility.ts`:
+
+- Any instance settings page: `instance.profile`, `instance.environments`,
+  `instance.access`, `instance.heartbeats`, `instance.experimental`,
+  `instance.plugins`, `instance.adapters` — removed from navigation and
+  routing (the General page is the settings root and stays visible). Hiding
+  `instance.access`, `instance.plugins`, or `instance.adapters` also floors
+  their management endpoints with `403 settings_operator_managed`; hiding
+  `instance.experimental` floors every experimental toggle write.
+- Any Instance → General section: `instance.general.censorUsernameInLogs`,
+  `instance.general.keyboardShortcuts`, `instance.general.backupRetention`,
+  `instance.general.feedbackDataSharingPreference` (each also rejects
+  value-changing writes via `PATCH /api/instance/settings/general`), plus the
+  UI-only `instance.general.deploymentStatus` and `instance.general.signOut`.
+- Any experimental toggle: `instance.experimental.<flagKey>` (e.g.
+  `instance.experimental.enableSmokeLab`) — the card disappears and
+  value-changing writes are rejected.
+- Any top-level company settings page: `company.members`, `company.invites`,
+  `company.secrets`, `company.export`, `company.import` — removed from the
+  settings sidebar, tab bar, and routing (the company General page is the
+  settings root and stays visible). These are UI-visibility keys: the
+  membership, invite, secret, and export APIs stay live for agents and
+  integrations. `company.import` is the exception — hiding it also floors
+  every company-import route with `403 settings_operator_managed`. On
+  cloud-managed instances import is floored unconditionally with
+  `403 cloud_managed`, independent of this variable.
+
+Unknown keys are logged and ignored, so one list can be rolled across a fleet
+of mixed app versions. With the variable unset nothing is hidden and behavior
+is identical to earlier releases. Hiding a toggle does not change its value;
+pair hiding with the desired default where it matters.
 
 ## Secrets
 
@@ -32,7 +72,7 @@ These are set automatically by the server when invoking agents:
 |----------|-------------|
 | `PAPERCLIP_AGENT_ID` | Agent's unique ID |
 | `PAPERCLIP_COMPANY_ID` | Company ID |
-| `PAPERCLIP_API_URL` | Paperclip API base URL |
+| `PAPERCLIP_API_URL` | Paperclip API base URL (inherits the server-level value; see Server Configuration above) |
 | `PAPERCLIP_API_KEY` | Short-lived JWT for API auth |
 | `PAPERCLIP_RUN_ID` | Current heartbeat run ID |
 | `PAPERCLIP_TASK_ID` | Issue that triggered this wake |
@@ -46,5 +86,5 @@ These are set automatically by the server when invoking agents:
 
 | Variable | Description |
 |----------|-------------|
-| `ANTHROPIC_API_KEY` | Anthropic API key (for Claude Local adapter) |
-| `OPENAI_API_KEY` | OpenAI API key (for Codex Local adapter) |
+| `ANTHROPIC_API_KEY` | Anthropic API key (for Claude Code adapter) |
+| `OPENAI_API_KEY` | OpenAI API key (for Codex adapter) |
